@@ -12,7 +12,8 @@ const loginLimiter = rateLimit({
 
 const publicUser = (u, b) => ({
   user: { id: u.id, name: u.name, email: u.email, role: u.role },
-  business: b ? { id: b.id, name: b.name } : null
+  business: b ? { id: b.id, name: b.name } : null,
+  impersonating: u.realRole === 'superadmin' // superadministrador trabajando dentro de un negocio
 });
 
 router.post('/login', loginLimiter, h(async (req, res) => {

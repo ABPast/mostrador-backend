@@ -34,7 +34,7 @@ app.use('/api', (req, res, next) => {
   if (origin && allowedOrigins.includes(origin)) {
     res.set('Access-Control-Allow-Origin', origin);
     res.append('Vary', 'Origin');
-    res.set('Access-Control-Allow-Headers', 'Content-Type, Authorization');
+    res.set('Access-Control-Allow-Headers', 'Content-Type, Authorization, X-Business-Id');
     res.set('Access-Control-Allow-Methods', 'GET, POST, PATCH, DELETE, OPTIONS');
     res.set('Access-Control-Max-Age', '86400');
   }
@@ -47,6 +47,7 @@ app.use('/api', rateLimit({ windowMs: 60 * 1000, limit: 600, standardHeaders: tr
 app.use('/api/auth', require('./routes/auth'));
 app.use('/api/admin', require('./routes/admin'));
 app.use('/api/users', require('./routes/users'));
+app.use('/api', require('./routes/sales'));
 app.use('/api', require('./routes/data'));
 app.use('/api', (req, res) => res.status(404).json({ error: 'No encontrado' }));
 

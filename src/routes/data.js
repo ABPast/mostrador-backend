@@ -1,4 +1,4 @@
-// CRUD de products, customers, suppliers, expenses y sales.
+// CRUD de products, customers, suppliers y expenses (las ventas están en sales.js).
 // Todo se filtra por el negocio del usuario autenticado: nunca se ven datos de otro negocio.
 const router = require('express').Router();
 const crypto = require('crypto');
@@ -7,7 +7,7 @@ const { requireAuth } = require('../auth');
 const { bad, h } = require('../util');
 const { COLLECTIONS, PERM, colOf, clean, toDoc } = require('../collections');
 
-const C = '/:col(products|customers|suppliers|expenses|sales)';
+const C = '/:col(products|customers|suppliers|expenses)';
 const auth = requireAuth(['admin', 'user']);
 const id = x => '`' + x + '`';
 
@@ -18,8 +18,17 @@ function ctx(req, action) {
 }
 
 async function mustExist(c, req) {
-  const rows = await q(`SELECT id FROM ${id(c.table)} WHERE id=? AND business_id=?`, [req.params.id, req.user.businessId]);
+  const rows = await q(`SELECT * FROM ${id(c.table)} WHERE id=? AND business_id=?`, [req.params.id, req.user.businessId]);
   if (!rows.length) throw bad('No encontrado', 404);
+  return rows[0];
+}
+
+// Los productos "por unidad" siempre tienen existencias enteras.
+function roundForUnit(data, saleType) {
+  if (saleType === 'unidad') {
+    if (data.stock !== undefined) data.stock = Math.round(data.stock);
+    if (data.min !== undefined) data.min = Math.round(data.min);
+  }
 }
 
 router.get(C, auth, h(async (req, res) => {
@@ -45,12 +54,17 @@ router.get(C, auth, h(async (req, res) => {
   if (n > 0) { sql += ' LIMIT ?'; params.push(Math.min(n, 5000)); }
 
   const rows = await q(sql, params);
-  res.json(rows.map(r => toDoc(c, r)));
+  res.json(rows.map(r => {
+    const doc = toDoc(c, r);
+    if (req.user.role === 'user' && req.params.col === 'products') delete doc.cost; // el empleado no ve costos
+    return doc;
+  }));
 }));
 
 router.post(C, auth, h(async (req, res) => {
   const c = ctx(req, 'c');
   const data = clean(c, req.body || {}, false);
+  if (req.params.col === 'products') roundForUnit(data, data.saleType || 'unidad');
   const docId = crypto.randomUUID(), now = Date.now();
   const cols = ['id', 'business_id', 'created_at', 'updated_at'];
   const vals = [docId, req.user.businessId, now, now];
@@ -61,11 +75,9 @@ router.post(C, auth, h(async (req, res) => {
 
 router.patch(C + '/:id', auth, h(async (req, res) => {
   const c = ctx(req, 'u');
-  await mustExist(c, req);
-  let body = req.body || {};
-  // Un empleado solo puede ajustar existencias (p. ej. al vender), no precios ni costos.
-  if (req.user.role === 'user' && req.params.col === 'products') body = { stock: body.stock };
-  const data = clean(c, body, true);
+  const current = await mustExist(c, req);
+  const data = clean(c, req.body || {}, true);
+  if (req.params.col === 'products') roundForUnit(data, data.saleType || current.sale_type);
   const keys = Object.keys(data);
   if (keys.length) {
     const sets = keys.map(k => `${id(colOf(c, k))}=?`).concat('`updated_at`=?').join(',');
